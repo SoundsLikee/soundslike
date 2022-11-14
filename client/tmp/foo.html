@@ -1,0 +1,38 @@
+<html>
+    <h1>hhhh</h1>
+
+<!--    <script src="https://cdn.webrtc-experiment.com/MediaStreamRecorder.js"> </script>-->
+    <!-- WWW -->
+    <script src="https://www.webrtc-experiment.com/MediaStreamRecorder.js"> </script>
+
+    <script>
+        const mediaConstraints = {
+            audio: true
+        }
+
+        function onMediaSuccess(stream) {
+            let mediaRecorder = new MediaStreamRecorder(stream)
+            // mediaRecorder.isTypeSupported('audio/wav')
+            mediaRecorder.mimeType = 'audio/wav';
+            mediaRecorder.ondataavailable = function (blob) {
+                // POST/PUT "Blob" using FormData/XHR2
+                var blobURL = URL.createObjectURL(blob);
+
+                var file = new File([blob], 'msr-' + (new Date).toISOString().replace(/:|\./g, '-') + '.webm', {
+                    type: 'audio/wav'
+                });
+                console.log(file.text())
+                document.write('<a href="' + blobURL + '">' + blobURL + '</a></br>');
+
+            };
+            mediaRecorder.start(3);
+        }
+
+        function onMediaError(e) {
+            console.error('media error', e);
+        }
+
+        navigator.getUserMedia(mediaConstraints, onMediaSuccess, onMediaError);
+
+    </script>
+</html>

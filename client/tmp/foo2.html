@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Foo2</title>
+        <meta charset="utf-8">
+        <script src="https://www.webrtc-experiment.com/MediaStreamRecorder.js"> </script>
+    </head>
+    <body>
+       <button id="start">Start Record</button>
+        <button id="stop">Stop Record</button>
+    </body>
+
+    <script>
+        const startButton = document.getElementById("start");
+        const stopButton = document.getElementById("stop");
+        const timeSlice = 500;
+        const option = {type: 'audio/wav'}
+        const mediaConstraints = {
+            audio: true
+        }
+
+        function blobToURL(blob){
+            return URL.createObjectURL(blob);
+        }
+
+        function timeBasedFileName(){
+            return 'msr-' + (new Date).toISOString().replace(/:|\./g, '-') + '.wav'
+        }
+
+        let mediaRecorder;
+        function onMediaSuccess(stream) {
+            mediaRecorder = new MediaStreamRecorder(stream)
+            mediaRecorder.mimeType = 'audio/wav';
+            let recordedChunks = []
+
+            mediaRecorder.ondataavailable = blob => {
+                let blobURL = blobToURL(blob)
+                let fileName = timeBasedFileName()
+                let file = new File([blob], fileName, option);
+
+                recordedChunks.push(blob)
+                document.write('<strong>num ='+ recordedChunks.length + '</strong></br>')
+                document.write('<a href="' + blobURL + '">' + blobURL + '</a></br>');
+
+                ConcatenateBlobs(recordedChunks, "audio/wav", (cBlob) => {
+                    let cBlobUrl = blobToURL(cBlob)
+                    let fileName2 = timeBasedFileName()
+                    let file = new File([cBlob], fileName2, option)
+                    document.write('<a href="' + cBlobUrl + '">' + cBlobUrl + '</a></br>');
+                });
+
+                if(recordedChunks.length > 5) recordedChunks.shift()
+            };
+
+            // 5s
+            mediaRecorder.start(3000);
+        }
+
+        function onMediaError(e) {
+            console.error('media error', e);
+        }
+
+        stopButton.addEventListener('click', () => {
+            console.log("CLICKED STOP BUTTON")
+            mediaRecorder.stop()
+        });
+
+        startButton.addEventListener('click', () => {
+            console.log("CLICKED START BUTTON")
+            navigator.getUserMedia(
+                mediaConstraints,
+                onMediaSuccess,
+                onMediaError
+            );
+        });
+
+        ////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////
+
+        function ConcatenateBlobs(blobs, type, callback) {
+            let buffers = []
+            let index = 0
+
+            function readAsArrayBuffer() {
+                if (!blobs[index]) {
+                    return concatenateBuffers();
+                }
+                const reader = new FileReader()
+                reader.onload = function(event) {
+                    buffers.push(event.target.result);
+                    index++;
+                    readAsArrayBuffer();
+                };
+                reader.readAsArrayBuffer(blobs[index]);
+            }
+
+            readAsArrayBuffer();
+
+            function audioLengthTo32Bit(n) {
+                let floorN = Math.floor(n);
+                let b1 = floorN & 255
+                let b2 = (floorN >> 8) & 255
+                let b3 = (floorN >> 16) & 255
+                let b4 = (floorN >> 24) & 255
+
+                return [b1, b2, b3, b4];
+            }
+
+            function concatenateBuffers() {
+                var byteLength = 0;
+                buffers.forEach(buffer => byteLength += buffer.byteLength);
+
+                let tmp = new Uint8Array(byteLength)
+                let lastOffset = 0
+                let newData
+                buffers.forEach(buffer => {
+                    if (type==='audio/wav' && lastOffset >  0) newData = new Uint8Array(buffer, 44);
+                    else newData = new Uint8Array(buffer);
+                    tmp.set(newData, lastOffset);
+                    lastOffset += newData.length;
+                });
+                if (type ==='audio/wav') {
+                    tmp.set(audioLengthTo32Bit(lastOffset - 8), 4);
+                    tmp.set(audioLengthTo32Bit(lastOffset - 44), 40); // update audio length in the header
+                }
+                var blob = new Blob([tmp.buffer], {
+                    type: type
+                });
+                callback(blob);
+            }
+        }
+
+    </script>
+</html>
+

@@ -1,0 +1,149 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Sliding Window Recorder</title>
+        <meta charset="utf-8">
+        <script src="https://www.WebRTC-Experiment.com/RecordRTC.js"></script>
+    </head>
+    <body>
+        <button id="start">Start Record</button>
+        <button id="stop">Stop Record</button>
+        <div id="records"></div>
+    </body>
+
+    <script type="text/javascript">
+        const blobToURL = blob => URL.createObjectURL(blob)
+        const timeBasedFileName = () => 'msr-' + (new Date).toISOString().replace(/:|\./g, '-') + '.wav'
+        const ondataavailableHandler = () => {
+            const fileOption = {type: 'audio/wav'}
+            const windowLength = 5
+            let recordedChunks = []
+            let i = 0
+
+            return blob => {
+                let blobURL = blobToURL(blob)
+                let file = new File([blob], timeBasedFileName(), fileOption)
+                let recordsElem = document.getElementById("records")
+
+                recordedChunks.push(blob)
+                recordsElem.innerHTML += '<strong>i =' + i + '</strong></br>'
+                recordsElem.innerHTML += '<a href="' + blobURL + '">' + blobURL + '</a></br>'
+                ConcatenateBlobs(recordedChunks, 'audio/wav', (cBlob) => {
+                    let cBlobUrl = blobToURL(cBlob)
+                    let file = new File([cBlob], timeBasedFileName(), fileOption)
+
+                    recordsElem.innerHTML += '<a href="' + cBlobUrl + '">' + cBlobUrl + '</a></br>'
+                });
+
+                if (recordedChunks.length > windowLength) recordedChunks.shift()
+
+                i = i + 1
+            }
+        }
+
+        const getRecordRtcOption = () => ({
+            type: 'audio',
+            mimeType: 'audio/wav',
+            recorderType: StereoAudioRecorder,
+            timeSlice: 1000,
+            ondataavailable: ondataavailableHandler(),
+            // bitsPerSecond: 128000,
+            // audioBitsPerSecond: 128000,
+            // sampleRate: 96000,
+            // used by StereoAudioRecorder
+            // the range 22050 to 96000.
+            // sampleRate: 96000,
+            //
+            // // used by StereoAudioRecorder
+            // // the range 22050 to 96000.
+            // // let us force 16khz recording:
+            // desiredSampRate: 16000,
+            //
+            // // used by StereoAudioRecorder
+            // // Legal values are (256, 512, 1024, 2048, 4096, 8192, 16384).
+            // bufferSize: 16384,
+            //
+            // // used by StereoAudioRecorder
+            // // 1 or 2
+            // numberOfAudioChannels: 2,
+        });
+
+        const startButton = document.getElementById("start");
+        const stopButton = document.getElementById("stop");
+        let mediaRecorder;
+
+        stopButton.addEventListener('click', () => {
+            console.log("CLICKED STOP BUTTON")
+            mediaRecorder.stopRecording()
+        });
+
+        startButton.addEventListener('click', () => {
+            console.log("CLICKED START BUTTON");
+            navigator.mediaDevices.getUserMedia({
+                video: false,
+                audio: true
+            }).then(async function(stream) {
+                mediaRecorder = RecordRTC(stream, getRecordRtcOption());
+                mediaRecorder.startRecording();
+            });
+        });
+
+        ////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////
+
+        function ConcatenateBlobs(blobs, type, callback) {
+            let buffers = []
+            let index = 0
+
+            const readAsArrayBuffer = () => {
+                if (!blobs[index]) {
+                    return concatenateBuffers();
+                }
+                const reader = new FileReader()
+                reader.onload = function(event) {
+                    buffers.push(event.target.result);
+                    index++;
+                    readAsArrayBuffer();
+                };
+                reader.readAsArrayBuffer(blobs[index]);
+            }
+
+            readAsArrayBuffer();
+
+            const audioLengthTo32Bit = n => {
+                let floorN = Math.floor(n);
+                let b1 = floorN & 255
+                let b2 = (floorN >> 8) & 255
+                let b3 = (floorN >> 16) & 255
+                let b4 = (floorN >> 24) & 255
+
+                return [b1, b2, b3, b4];
+            }
+
+            function concatenateBuffers() {
+                let byteLength = 0
+                buffers.forEach(buffer => byteLength += buffer.byteLength);
+
+                let tmp = new Uint8Array(byteLength)
+                let lastOffset = 0
+                let newData
+                buffers.forEach(buffer => {
+                    if (type==='audio/wav' && lastOffset >  0) newData = new Uint8Array(buffer, 44);
+                    else newData = new Uint8Array(buffer);
+                    tmp.set(newData, lastOffset);
+                    lastOffset += newData.length;
+                });
+                if (type ==='audio/wav') {
+                    tmp.set(audioLengthTo32Bit(lastOffset - 8), 4);
+                    tmp.set(audioLengthTo32Bit(lastOffset - 44), 40); // update audio length in the header
+                }
+                let blob = new Blob([tmp.buffer], {
+                    type: type
+                })
+                callback(blob);
+            }
+        }
+
+    </script>
+</html>
+

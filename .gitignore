@@ -1,3 +1,6 @@
+.DS_Store
+.idea
+*.wav
 # Logs
 logs
 *.log
